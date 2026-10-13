@@ -19,6 +19,41 @@ class NotionLogger:
         self.database_id = database_id
         self.client = Client(auth=api_key)
 
+    def _get_db_info(self) -> Tuple[Dict[str, Any], Dict[str, Any], Optional[str]]:
+        """
+        Retrieve database object, properties dictionary, and primary data_source_id.
+        Handles both traditional database schemas and Notion API 2025+ data_sources schemas.
+        """
+        db = self.client.databases.retrieve(database_id=self.database_id)
+        properties = db.get("properties") or {}
+        data_source_id = None
+
+        data_sources = db.get("data_sources", [])
+        if data_sources:
+            data_source_id = data_sources[0].get("id")
+            if not properties and hasattr(self.client, "data_sources") and data_source_id:
+                try:
+                    ds = self.client.data_sources.retrieve(data_source_id=data_source_id)
+                    properties = ds.get("properties") or {}
+                except Exception:
+                    pass
+
+        return db, properties, data_source_id
+
+    def _query_database(self, data_source_id: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """
+        Query database records supporting both client.data_sources.query and client.databases.query.
+        """
+        if data_source_id and hasattr(self.client, "data_sources"):
+            return self.client.data_sources.query(data_source_id=data_source_id, **kwargs)
+        if hasattr(self.client.databases, "query"):
+            return self.client.databases.query(database_id=self.database_id, **kwargs)
+        if hasattr(self.client, "data_sources"):
+            _, _, ds_id = self._get_db_info()
+            if ds_id:
+                return self.client.data_sources.query(data_source_id=ds_id, **kwargs)
+        raise NotionError("Could not query Notion database: no supported query method found.")
+
     def validate_connection(self) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Validate authentication and database access.
@@ -32,13 +67,12 @@ class NotionLogger:
             bot_name = user.get("name", "Notion Integration")
 
             # 2. Check Database access
-            db = self.client.databases.retrieve(database_id=self.database_id)
+            db, properties, data_source_id = self._get_db_info()
             
             # Extract database title
             title_list = db.get("title", [])
             db_title = "".join([t.get("plain_text", "") for t in title_list]) or "Untitled Database"
             
-            properties = db.get("properties", {})
             schema_summary = {
                 name: prop.get("type") for name, prop in properties.items()
             }
@@ -47,7 +81,8 @@ class NotionLogger:
                 "title": db_title,
                 "bot_name": bot_name,
                 "properties": schema_summary,
-                "raw_properties": properties
+                "raw_properties": properties,
+                "data_source_id": data_source_id
             }
 
         except APIResponseError as err:
@@ -116,7 +151,10 @@ class NotionLogger:
                     mapping["project_client"] = (name, p_type)
 
         # 4. Pomodoros counter (number)
-        pomo_candidates = ["pomodoros", "pomodoro", "pomodoro count", "🍅", "cycles", "poms"]
+        pomo_candidates = [
+            "pomodoros", "pomodoro", "pomodoro-tracking", "pomodoro tracking",
+            "pomodoro_tracking", "pomodoro count", "🍅", "cycles", "poms"
+        ]
         for name, prop in db_properties.items():
             if prop.get("type") == "number":
                 if name.lower() in pomo_candidates or "pomodoro" in name.lower() or "🍅" in name:
@@ -126,14 +164,14 @@ class NotionLogger:
         # 5. Time Spent / Duration (number)
         duration_candidates = [
             "time spent (min)", "time spent (mins)", "time spent", "duration (min)",
-            "duration (mins)", "duration", "minutes", "min", "time tracked", "time"
+            "duration (mins)", "duration", "minutes", "min", "time tracked", "time", "focus time"
         ]
         for name, prop in db_properties.items():
             if prop.get("type") == "number":
                 # Ensure we don't accidentally assign the same column as Pomodoros
                 if mapping["pomodoros"] and name == mapping["pomodoros"][0]:
                     continue
-                if name.lower() in duration_candidates:
+                if name.lower() in duration_candidates or "time spent" in name.lower():
                     mapping["time_spent"] = (name, "number")
                     break
                 elif mapping["time_spent"] is None and not mapping["pomodoros"]:
@@ -159,12 +197,12 @@ class NotionLogger:
         Returns a list of dicts: [{'id': page_id, 'title': str, 'status': str, 'project': str, 'pomodoros': int, 'time_spent': int, 'url': str}]
         """
         try:
-            db = self.client.databases.retrieve(database_id=self.database_id)
-            mapping = self._resolve_property_mapping(db.get("properties", {}))
+            db, properties, data_source_id = self._get_db_info()
+            mapping = self._resolve_property_mapping(properties)
             title_prop = mapping.get("title", ("Task", "title"))[0]
 
-            response = self.client.databases.query(
-                database_id=self.database_id,
+            response = self._query_database(
+                data_source_id=data_source_id,
                 page_size=limit,
                 sorts=[{"timestamp": "last_edited_time", "direction": "descending"}]
             )
@@ -223,7 +261,7 @@ class NotionLogger:
                 })
 
             return tasks
-        except Exception as e:
+        except Exception:
             # Fall back to empty list on error
             return []
 
@@ -234,12 +272,12 @@ class NotionLogger:
             return None
 
         try:
-            db = self.client.databases.retrieve(database_id=self.database_id)
-            mapping = self._resolve_property_mapping(db.get("properties", {}))
+            db, properties, data_source_id = self._get_db_info()
+            mapping = self._resolve_property_mapping(properties)
             title_prop_name = mapping.get("title", ("Task", "title"))[0]
 
-            response = self.client.databases.query(
-                database_id=self.database_id,
+            response = self._query_database(
+                data_source_id=data_source_id,
                 filter={
                     "property": title_prop_name,
                     "title": {
@@ -251,8 +289,8 @@ class NotionLogger:
             results = response.get("results", [])
             if not results:
                 # Try contains filter if exact match returned nothing
-                response = self.client.databases.query(
-                    database_id=self.database_id,
+                response = self._query_database(
+                    data_source_id=data_source_id,
                     filter={
                         "property": title_prop_name,
                         "title": {
@@ -322,11 +360,10 @@ class NotionLogger:
         now = completed_at or datetime.now(timezone.utc)
 
         try:
-            db = self.client.databases.retrieve(database_id=self.database_id)
+            db, properties_schema, data_source_id = self._get_db_info()
         except Exception as e:
             raise NotionError(f"Could not retrieve Notion database schema: {e}") from e
 
-        properties_schema = db.get("properties", {})
         mapping = self._resolve_property_mapping(properties_schema)
 
         # Look up existing page if page_id not provided
@@ -443,10 +480,20 @@ class NotionLogger:
                 action = "updated"
             else:
                 # Create new page
-                page = self.client.pages.create(
-                    parent={"database_id": self.database_id},
-                    properties=updated_props
-                )
+                parent_arg = {"data_source_id": data_source_id} if data_source_id else {"database_id": self.database_id}
+                try:
+                    page = self.client.pages.create(
+                        parent=parent_arg,
+                        properties=updated_props
+                    )
+                except APIResponseError:
+                    if "data_source_id" in parent_arg:
+                        page = self.client.pages.create(
+                            parent={"database_id": self.database_id},
+                            properties=updated_props
+                        )
+                    else:
+                        raise
                 action = "created"
 
             page_id = page.get("id")

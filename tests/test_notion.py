@@ -49,6 +49,20 @@ def test_resolve_property_mapping_variations():
     assert mapping["session_date"] == ("Date", "date")
 
 
+def test_resolve_property_mapping_pomodoro_tracking():
+    logger = NotionLogger(api_key="secret_test", database_id="db123")
+    
+    mock_properties = {
+        "Task": {"type": "title"},
+        "pomodoro-tracking": {"type": "number"},
+        "Time Spent (min)": {"type": "number"},
+    }
+
+    mapping = logger._resolve_property_mapping(mock_properties)
+    assert mapping["pomodoros"] == ("pomodoro-tracking", "number")
+    assert mapping["time_spent"] == ("Time Spent (min)", "number")
+
+
 def test_record_or_increment_task_creates_new():
     logger = NotionLogger(api_key="secret_test", database_id="db123")
     
