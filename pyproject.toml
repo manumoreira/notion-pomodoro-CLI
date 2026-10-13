@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "notion-pomodoro-cli"
+version = "0.1.0"
+description = "A lightweight CLI Pomodoro timer that logs completed sessions to a Notion database."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Developer" }
+]
+dependencies = [
+    "typer[all]>=0.12.0",
+    "rich>=13.7.0",
+    "notion-client>=2.2.1",
+    "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+pomodoro = "notion_pomodoro.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
