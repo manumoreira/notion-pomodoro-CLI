@@ -6,6 +6,10 @@ import sys
 from typing import Optional
 
 
+from rich.console import Console
+from rich.panel import Panel
+
+
 def ring_bell() -> None:
     """Emit an audio alert via terminal bell."""
     try:
@@ -78,24 +82,43 @@ def send_system_notification(title: str, message: str, sound_name: str = "Glass"
     return False
 
 
-def notify_session_end(session_type: str, task_name: Optional[str] = None) -> None:
-    """Notify user of session completion with sound and system popup."""
+def notify_session_end(
+    session_type: str,
+    task_name: Optional[str] = None,
+    console: Optional[Console] = None,
+    os_notify: bool = False,
+) -> None:
+    """Notify user of session completion via terminal bell and visual banner."""
     ring_bell()
-    
+
+    c = console or Console()
+
     if session_type.lower() == "work":
         title = "🍅 Pomodoro Completed!"
         if task_name:
-            msg = f"Great job! Finished focus block on: {task_name}. Time for a break!"
+            msg = f"Finished focus block on: [bold]{task_name}[/bold]. Time for a break!"
         else:
-            msg = "Great job! Focus session completed. Time for a break!"
+            msg = "Focus session completed. Time for a break!"
+        border_style = "green"
         sound = "Hero"
     elif session_type.lower() == "short_break":
         title = "☕ Short Break Ended!"
         msg = "Break is over. Ready to start your next focus session?"
+        border_style = "cyan"
         sound = "Glass"
     else:  # Long break
         title = "🌴 Long Break Ended!"
-        msg = "Fully recharged? Let's dive back in!"
+        msg = "Fully recharged? Let's dive back into focus!"
+        border_style = "magenta"
         sound = "Ping"
 
-    send_system_notification(title, msg, sound_name=sound)
+    c.print(
+        Panel(
+            f"[bold {border_style}]🔔 {title}[/bold {border_style}]\n{msg}",
+            border_style=border_style,
+            padding=(0, 2),
+        )
+    )
+
+    if os_notify:
+        send_system_notification(title, msg, sound_name=sound)

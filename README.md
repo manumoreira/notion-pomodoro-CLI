@@ -10,7 +10,7 @@ A lightweight, beautiful Command Line Interface (CLI) Pomodoro timer built in Py
 - **Automatic Notion Logging**: Prompts for task name/tags upon completion and creates structured entries in your Notion database.
 - **Configurable Durations**: Default 25 min work, 5 min short break, 15 min long break, 4 cycles (all customizable via flags or config).
 - **Interactive Controls**: Press `Ctrl+C` at any time to pause, resume, finish early (logging actual time worked), or skip breaks.
-- **Audio & Desktop Notifications**: Audio chime and native system notifications on macOS, Linux, and Windows when a session ends.
+- **Audio & Terminal Notifications**: Terminal audio chime and prominent completion alert panels right in the console (optional desktop notifications via `--os-notify`).
 - **Direct Logging**: Manually log sessions anytime with `pomodoro log`.
 - **Flexible Notion Schema**: Automatically resolves common column names (`Task`/`Name`, `Date`, `Duration`, `Tags`/`Category`, `Status`).
 
@@ -65,7 +65,7 @@ pomodoro start -w 30 -s 10 -l 20 -c 4
 ```
 
 When the timer completes:
-1. It chimes and sends a desktop notification.
+1. It chimes and displays a completion alert in your terminal.
 2. Prompts: `Did you finish this task? (Mark status as Done in Notion) [y/N]`.
 3. Automatically increments **`Pomodoros` (+1)** and adds to **`Time Spent (min)` (+25m)** directly on the task in Notion.
 

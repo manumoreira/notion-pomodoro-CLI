@@ -145,7 +145,8 @@ def start_cmd(
     cycles: Optional[int] = typer.Option(None, "--cycles", "-c", help="Number of Pomodoro cycles to run"),
     auto_break: bool = typer.Option(True, "--auto-break/--prompt-break", help="Automatically transition into break timers"),
     no_log: bool = typer.Option(False, "--no-log", help="Do not log completed sessions to Notion"),
-    silent: bool = typer.Option(False, "--silent", help="Disable audio and desktop notifications"),
+    silent: bool = typer.Option(False, "--silent", help="Disable audio and terminal notifications"),
+    os_notify: bool = typer.Option(False, "--os-notify", help="Also push desktop/OS notifications (disabled by default)"),
 ):
     """Start a Pomodoro focus session with visual timer and automatic Notion task incrementing."""
     cfg = load_config()
@@ -244,7 +245,7 @@ def start_cmd(
         completed_at = datetime.now(timezone.utc)
 
         if not silent and result.completed:
-            notify_session_end("work", task_name=current_task)
+            notify_session_end("work", task_name=current_task, console=console, os_notify=os_notify)
 
         if result.action == "cancelled":
             console.print("[red]Focus session aborted.[/red]")
@@ -309,7 +310,7 @@ def start_cmd(
             )
 
             if not silent and break_res.completed:
-                notify_session_end("long_break" if is_long_break else "short_break")
+                notify_session_end("long_break" if is_long_break else "short_break", console=console, os_notify=os_notify)
 
             if break_res.action == "cancelled":
                 console.print("[red]Session loop cancelled.[/red]")
@@ -382,7 +383,8 @@ def tasks_cmd(
 def break_cmd(
     minutes: Optional[int] = typer.Option(None, "--minutes", "-m", help="Break duration in minutes"),
     long_break: bool = typer.Option(False, "--long", "-l", help="Run long break duration"),
-    silent: bool = typer.Option(False, "--silent", help="Disable audio and desktop notifications"),
+    silent: bool = typer.Option(False, "--silent", help="Disable audio and terminal notifications"),
+    os_notify: bool = typer.Option(False, "--os-notify", help="Also push desktop/OS notifications (disabled by default)"),
 ):
     """Run an independent break countdown timer."""
     cfg = load_config()
@@ -401,7 +403,7 @@ def break_cmd(
     result = timer.run(duration_minutes=duration, session_type=b_type)
 
     if not silent and result.completed:
-        notify_session_end("long_break" if long_break else "short_break")
+        notify_session_end("long_break" if long_break else "short_break", console=console, os_notify=os_notify)
 
     if result.completed:
         console.print(f"[bold green]✓ {b_type} finished! Feeling refreshed?[/bold green]")
