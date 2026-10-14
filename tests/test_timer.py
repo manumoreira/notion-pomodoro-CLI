@@ -23,3 +23,37 @@ def test_timer_result_elapsed_minutes():
 
     res4 = TimerResult(completed=False, elapsed_seconds=10, total_seconds=1500)
     assert res4.elapsed_minutes == 0
+
+
+def test_timer_pause_prompts_render_intact():
+    import io
+    from rich.console import Console
+
+    # Verify that Rich does not eat the initial letters when rendering the prompts
+    break_prompt = (
+        r"Choose action: [bold cyan]\[r][/bold cyan]esume, "
+        r"[bold cyan]\[s][/bold cyan]kip break, "
+        r"[bold cyan]\[q][/bold cyan]uit"
+    )
+    work_prompt = (
+        r"Choose action: [bold cyan]\[r][/bold cyan]esume, "
+        r"[bold cyan]\[f][/bold cyan]inish early & log, "
+        r"[bold cyan]\[q][/bold cyan]uit/cancel"
+    )
+
+    out = io.StringIO()
+    c = Console(file=out, color_system=None)
+    c.print(break_prompt)
+    rendered_break = out.getvalue()
+    assert "[r]esume" in rendered_break
+    assert "[s]kip break" in rendered_break
+    assert "[q]uit" in rendered_break
+    assert "esume" in rendered_break and not rendered_break.startswith("Choose action: esume")
+
+    out_work = io.StringIO()
+    c_work = Console(file=out_work, color_system=None)
+    c_work.print(work_prompt)
+    rendered_work = out_work.getvalue()
+    assert "[r]esume" in rendered_work
+    assert "[f]inish early & log" in rendered_work
+    assert "[q]uit/cancel" in rendered_work

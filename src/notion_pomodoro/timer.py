@@ -133,10 +133,18 @@ class PomodoroTimer:
                     self.console.print("\n[yellow]⏸  Timer Paused.[/yellow]")
                     
                     if is_break:
-                        prompt_text = "Choose action: [r]esume, [s]kip break, [q]uit"
+                        prompt_text = (
+                            r"Choose action: [bold cyan]\[r][/bold cyan]esume, "
+                            r"[bold cyan]\[s][/bold cyan]kip break, "
+                            r"[bold cyan]\[q][/bold cyan]uit"
+                        )
                         choices = ["r", "s", "q"]
                     else:
-                        prompt_text = "Choose action: [r]esume, [f]inish early & log, [q]uit/cancel"
+                        prompt_text = (
+                            r"Choose action: [bold cyan]\[r][/bold cyan]esume, "
+                            r"[bold cyan]\[f][/bold cyan]inish early & log, "
+                            r"[bold cyan]\[q][/bold cyan]uit/cancel"
+                        )
                         choices = ["r", "f", "q"]
 
                     choice = Prompt.ask(prompt_text, choices=choices, default="r")
