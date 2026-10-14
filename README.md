@@ -64,6 +64,13 @@ pomodoro start --task "Prepare Client Proposal" --tag "Acme Corp"
 pomodoro start -w 30 -s 10 -l 20 -c 4
 ```
 
+> **Task Validation**: If a task name is entered that doesn't exist in Notion, the CLI prompts you:
+> - **[1]** Pick an existing task from Notion
+> - **[2]** Create it as a new task in Notion upon completion
+> - **[3]** Continue timer untracked (runs locally without logging to Notion)
+> - **[q]** Cancel session
+
+
 When the timer completes:
 1. It chimes and displays a completion alert in your terminal.
 2. Prompts: `Did you finish this task? (Mark status as Done in Notion) [y/N]`.
