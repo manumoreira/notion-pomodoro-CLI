@@ -1,5 +1,6 @@
 """Unit tests for CLI commands using CliRunner."""
 
+import io
 from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
 from notion_pomodoro.cli import app
@@ -126,3 +127,129 @@ def test_cli_log_configured():
             assert result.exit_code == 0
             assert "Created new task in Notion!" in result.stdout
             assert "Write Documentation" in result.stdout
+
+
+def test_handle_unmatched_task_found_in_recent():
+    from rich.console import Console
+    from notion_pomodoro.cli import _handle_unmatched_task
+
+    mock_logger = MagicMock()
+    recent = [{"id": "p1", "title": "Existing Task", "project": "Acme"}]
+    c = Console(file=io.StringIO(), color_system=None)
+
+    name, page_id, tag, untracked, cancelled, retry = _handle_unmatched_task(
+        task_input="existing task",
+        recent_tasks=recent,
+        notion_logger=mock_logger,
+        console=c,
+    )
+    assert name == "Existing Task"
+    assert page_id == "p1"
+    assert tag == "Acme"
+    assert not untracked
+    assert not cancelled
+    assert not retry
+
+
+def test_handle_unmatched_task_found_in_notion():
+    from rich.console import Console
+    from notion_pomodoro.cli import _handle_unmatched_task
+
+    mock_logger = MagicMock()
+    mock_logger.find_task_by_title.return_value = {
+        "id": "p2",
+        "title": "Database Optimization",
+        "project": "DevOps"
+    }
+    c = Console(file=io.StringIO(), color_system=None)
+
+    name, page_id, tag, untracked, cancelled, retry = _handle_unmatched_task(
+        task_input="Database Optimization",
+        recent_tasks=[],
+        notion_logger=mock_logger,
+        console=c,
+    )
+    assert name == "Database Optimization"
+    assert page_id == "p2"
+    assert tag == "DevOps"
+    assert not untracked
+
+
+def test_handle_unmatched_task_not_found_choose_retry():
+    from rich.console import Console
+    from notion_pomodoro.cli import _handle_unmatched_task
+
+    mock_logger = MagicMock()
+    mock_logger.find_task_by_title.return_value = None
+    c = Console(file=io.StringIO(), color_system=None)
+
+    with patch("notion_pomodoro.cli.Prompt.ask", return_value="1"):
+        name, page_id, tag, untracked, cancelled, retry = _handle_unmatched_task(
+            task_input="Nonexistent Task",
+            recent_tasks=[],
+            notion_logger=mock_logger,
+            console=c,
+        )
+        assert retry is True
+        assert not cancelled
+
+
+def test_handle_unmatched_task_not_found_choose_create():
+    from rich.console import Console
+    from notion_pomodoro.cli import _handle_unmatched_task
+
+    mock_logger = MagicMock()
+    mock_logger.find_task_by_title.return_value = None
+    c = Console(file=io.StringIO(), color_system=None)
+
+    with patch("notion_pomodoro.cli.Prompt.ask", return_value="2"):
+        name, page_id, tag, untracked, cancelled, retry = _handle_unmatched_task(
+            task_input="Brand New Task",
+            recent_tasks=[],
+            notion_logger=mock_logger,
+            console=c,
+        )
+        assert name == "Brand New Task"
+        assert page_id is None
+        assert not untracked
+        assert not retry
+        assert not cancelled
+
+
+def test_handle_unmatched_task_not_found_choose_untracked():
+    from rich.console import Console
+    from notion_pomodoro.cli import _handle_unmatched_task
+
+    mock_logger = MagicMock()
+    mock_logger.find_task_by_title.return_value = None
+    c = Console(file=io.StringIO(), color_system=None)
+
+    with patch("notion_pomodoro.cli.Prompt.ask", return_value="3"):
+        name, page_id, tag, untracked, cancelled, retry = _handle_unmatched_task(
+            task_input="Local Scratch",
+            recent_tasks=[],
+            notion_logger=mock_logger,
+            console=c,
+        )
+        assert name == "Local Scratch"
+        assert untracked is True
+        assert not cancelled
+
+
+def test_handle_unmatched_task_not_found_choose_cancel():
+    from rich.console import Console
+    from notion_pomodoro.cli import _handle_unmatched_task
+
+    mock_logger = MagicMock()
+    mock_logger.find_task_by_title.return_value = None
+    c = Console(file=io.StringIO(), color_system=None)
+
+    with patch("notion_pomodoro.cli.Prompt.ask", return_value="q"):
+        name, page_id, tag, untracked, cancelled, retry = _handle_unmatched_task(
+            task_input="Never Mind",
+            recent_tasks=[],
+            notion_logger=mock_logger,
+            console=c,
+        )
+        assert cancelled is True
+

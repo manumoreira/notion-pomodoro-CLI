@@ -134,6 +134,74 @@ def configure_cmd(
     )
 
 
+def _handle_unmatched_task(
+    task_input: str,
+    recent_tasks: list,
+    notion_logger: NotionLogger,
+    console: Console,
+) -> tuple[Optional[str], Optional[str], Optional[str], bool, bool, bool]:
+    """
+    Handle task input when it doesn't match a direct number choice in recent_tasks.
+    Checks Notion for an existing task with that title.
+    If not found, prompts user with options:
+      1: Pick an existing task from Notion
+      2: Create as a new task in Notion
+      3: Continue untracked (local only, do not log to Notion)
+      q: Cancel session
+
+    Returns:
+        (task_name, page_id, tag, is_untracked, is_cancelled, retry_selection)
+    """
+    clean_input = task_input.strip()
+    if not clean_input:
+        return None, None, None, False, False, True
+
+    # 1. Check if name matches any recent task case-insensitively
+    for t in recent_tasks:
+        if t["title"].strip().lower() == clean_input.lower():
+            console.print(f"[bold green]✓ Found task in Notion:[/bold green] [bold]{t['title']}[/bold]")
+            return t["title"], t["id"], t.get("project"), False, False, False
+
+    # 2. Query Notion by title
+    with console.status(f"[cyan]Searching Notion for '{clean_input}'...[/cyan]"):
+        found = notion_logger.find_task_by_title(clean_input)
+
+    if found:
+        console.print(f"[bold green]✓ Found task in Notion:[/bold green] [bold]{found['title']}[/bold]")
+        return found["title"], found["id"], found.get("project"), False, False, False
+
+    # 3. Not found in Notion -> Offer Medium options
+    console.print(
+        Panel(
+            f"[bold yellow]⚠️  Task '[bold white]{clean_input}[/bold white]' was not found in your Notion database.[/bold yellow]\n\n"
+            f"Please choose how you would like to proceed:\n"
+            f"  [bold cyan]1[/bold cyan] - Pick an existing task from Notion\n"
+            f"  [bold cyan]2[/bold cyan] - Create '[bold]{clean_input}[/bold]' as a new task in Notion\n"
+            f"  [bold cyan]3[/bold cyan] - Continue timer untracked (local only, do not log to Notion)\n"
+            f"  [bold red]q[/bold red] - Cancel session",
+            title="Task Not Found in Notion",
+            border_style="yellow",
+        )
+    )
+
+    action = Prompt.ask(
+        "Choose an option",
+        choices=["1", "2", "3", "q"],
+        default="1"
+    )
+
+    if action == "1":
+        return None, None, None, False, False, True
+    elif action == "2":
+        console.print(f"[cyan]ℹ Will create '[bold]{clean_input}[/bold]' in Notion when session completes.[/cyan]\n")
+        return clean_input, None, None, False, False, False
+    elif action == "3":
+        console.print(f"[yellow]ℹ Running timer locally. This session will NOT be tracked in Notion.[/yellow]\n")
+        return clean_input, None, None, True, False, False
+    else:  # "q"
+        return None, None, None, False, True, False
+
+
 @app.command(name="start")
 @app.command(name="work")
 def start_cmd(
@@ -173,57 +241,98 @@ def start_cmd(
     current_tag = tag
     current_page_id: Optional[str] = None
     notion_logger: Optional[NotionLogger] = None
+    task_untracked = False
 
     if not no_log and cfg.is_configured:
         notion_logger = NotionLogger(api_key=cfg.api_key, database_id=cfg.database_id)
 
+    # Validate command line --task if provided and Notion is connected
+    if current_task and notion_logger and not no_log:
+        recent_tasks = notion_logger.fetch_recent_tasks(limit=10)
+        t_name, p_id, p_tag, untracked, cancelled, retry = _handle_unmatched_task(
+            task_input=current_task,
+            recent_tasks=recent_tasks,
+            notion_logger=notion_logger,
+            console=console,
+        )
+        if cancelled:
+            console.print("[red]Focus session aborted.[/red]")
+            raise typer.Exit(code=0)
+        if retry:
+            current_task = None
+        else:
+            current_task = t_name
+            current_page_id = p_id
+            current_tag = p_tag or current_tag
+            task_untracked = untracked
+
     for cycle in range(1, total_cycles + 1):
+        cycle_untracked = task_untracked
         if not current_task:
             # Interactive task selection from Notion
-            if notion_logger:
-                with console.status("[cyan]Fetching active tasks from Notion...[/cyan]"):
-                    recent_tasks = notion_logger.fetch_recent_tasks(limit=8)
+            if notion_logger and not no_log:
+                while True:
+                    with console.status("[cyan]Fetching active tasks from Notion...[/cyan]"):
+                        recent_tasks = notion_logger.fetch_recent_tasks(limit=10)
 
-                if recent_tasks:
-                    table = Table(title="Select an active task from Notion or enter a new one", border_style="cyan")
-                    table.add_column("#", justify="center", style="bold cyan", width=4)
-                    table.add_column("Task", style="bold white")
-                    table.add_column("Project / Client", style="magenta")
-                    table.add_column("🍅", justify="center", style="green")
-                    table.add_column("Time", justify="right", style="yellow")
-                    table.add_column("Status", style="blue")
+                    if recent_tasks:
+                        table = Table(title="Select an active task from Notion or enter a task name", border_style="cyan")
+                        table.add_column("#", justify="center", style="bold cyan", width=4)
+                        table.add_column("Task", style="bold white")
+                        table.add_column("Project / Client", style="magenta")
+                        table.add_column("🍅", justify="center", style="green")
+                        table.add_column("Time", justify="right", style="yellow")
+                        table.add_column("Status", style="blue")
 
-                    for idx, t in enumerate(recent_tasks, 1):
-                        poms_str = str(t['pomodoros']) if t['pomodoros'] else "-"
-                        time_str = f"{t['time_spent']}m" if t['time_spent'] else "-"
-                        table.add_row(
-                            str(idx),
-                            t["title"],
-                            t["project"] or "[dim]-[/dim]",
-                            poms_str,
-                            time_str,
-                            t["status"] or "[dim]-[/dim]"
-                        )
+                        for idx, t in enumerate(recent_tasks, 1):
+                            poms_str = str(t['pomodoros']) if t['pomodoros'] else "-"
+                            time_str = f"{t['time_spent']}m" if t['time_spent'] else "-"
+                            table.add_row(
+                                str(idx),
+                                t["title"],
+                                t["project"] or "[dim]-[/dim]",
+                                poms_str,
+                                time_str,
+                                t["status"] or "[dim]-[/dim]"
+                            )
 
-                    console.print(table)
-                    user_input = Prompt.ask(
-                        f"[bold green]🍅 Cycle {cycle}/{total_cycles}[/bold green] - Enter number [1-{len(recent_tasks)}] or new task name",
-                        default="1"
-                    ).strip()
+                        console.print(table)
+                        user_input = Prompt.ask(
+                            f"[bold green]🍅 Cycle {cycle}/{total_cycles}[/bold green] - Select number [1-{len(recent_tasks)}] or enter task name",
+                            default="1"
+                        ).strip()
 
-                    if user_input.isdigit() and 1 <= int(user_input) <= len(recent_tasks):
-                        selected = recent_tasks[int(user_input) - 1]
-                        current_task = selected["title"]
-                        current_page_id = selected["id"]
-                        current_tag = selected["project"] or current_tag
+                        if user_input.isdigit() and 1 <= int(user_input) <= len(recent_tasks):
+                            selected = recent_tasks[int(user_input) - 1]
+                            current_task = selected["title"]
+                            current_page_id = selected["id"]
+                            current_tag = selected["project"] or current_tag
+                            cycle_untracked = False
+                            break
+                        else:
+                            t_name, p_id, p_tag, untracked, cancelled, retry = _handle_unmatched_task(
+                                task_input=user_input,
+                                recent_tasks=recent_tasks,
+                                notion_logger=notion_logger,
+                                console=console,
+                            )
+                            if cancelled:
+                                console.print("[red]Focus session aborted.[/red]")
+                                raise typer.Exit(code=0)
+                            if retry:
+                                continue
+                            current_task = t_name
+                            current_page_id = p_id
+                            current_tag = p_tag or current_tag
+                            cycle_untracked = untracked
+                            break
                     else:
-                        current_task = user_input
+                        current_task = Prompt.ask(
+                            f"[bold green]🍅 Cycle {cycle}/{total_cycles}[/bold green] - What are you focusing on?",
+                            default="Deep Work",
+                        )
                         current_page_id = None
-                else:
-                    current_task = Prompt.ask(
-                        f"[bold green]🍅 Cycle {cycle}/{total_cycles}[/bold green] - What are you focusing on?",
-                        default="Deep Work",
-                    )
+                        break
             else:
                 current_task = Prompt.ask(
                     f"[bold green]🍅 Cycle {cycle}/{total_cycles}[/bold green] - What are you focusing on?",
@@ -252,7 +361,7 @@ def start_cmd(
             break
 
         # Log / Increment in Notion
-        if result.completed and not no_log and notion_logger:
+        if result.completed and not no_log and not cycle_untracked and notion_logger:
             actual_duration = result.elapsed_minutes if result.interrupted else work_duration
             if actual_duration <= 0:
                 actual_duration = 1
@@ -285,6 +394,8 @@ def start_cmd(
                     )
                 except NotionError as e:
                     console.print(f"[bold red]✗ Failed to update Notion:[/bold red] {e}")
+        elif result.completed and cycle_untracked:
+            console.print("[dim]ℹ Session untracked: skipped Notion logging.[/dim]")
 
         # Break handling
         if cycle < total_cycles:
@@ -329,6 +440,7 @@ def start_cmd(
             # Clear task selection for next cycle
             current_task = None
             current_page_id = None
+            task_untracked = False
 
     console.print(
         Panel(
