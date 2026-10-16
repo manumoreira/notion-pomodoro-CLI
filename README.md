@@ -34,20 +34,57 @@ The CLI is designed to work seamlessly with your existing Notion Task database:
 
 ---
 
+## 🔒 Security & Credentials (For Users & Contributors)
+
+### ⚠️ Never Commit Secrets
+This repository is configured to protect your sensitive credentials:
+- All `.env`, `*.env`, `.env.*`, `*.key`, `*.pem`, `token.json`, and `credentials.json` files are **ignored by Git** in `.gitignore`.
+- **Never commit your personal Notion API key (`ntn_...` or `secret_...`) or Database ID** to version control.
+- Only the sanitized template file [`.env.example`](.env.example) should be committed to Git.
+
+---
+
 ## 🚀 Installation & Setup (Using `venv`)
 
 ### 1. Activate Virtual Environment
 ```bash
+source venv/bin/activate
+# or
 source .venv/bin/activate
 ```
 
 ### 2. Configure Credentials
-Run the interactive setup wizard:
+
+#### Method A: Interactive Wizard (Recommended)
+Run the guided setup:
 ```bash
 pomodoro init
 ```
-*Prompts for your Notion API Key and Database ID/URL, validates the connection, and detects your database properties.*
+*Prompts for your Notion API Key and Database ID/URL, validates the connection with Notion, and automatically saves your configuration to a protected local `.env`.*
 
+#### Method B: Manual Configuration with `.env.example`
+1. Copy the example template:
+   ```bash
+   cp .env.example .env
+   ```
+2. Edit `.env` and fill in your values:
+   ```env
+   NOTION_API_KEY=secret_your_notion_api_key_here
+   NOTION_DATABASE_ID=your_32_character_database_id_here
+   ```
+
+#### Method C: Global System Configuration (For Any Directory)
+If you want to use the CLI from anywhere on your system without local project files:
+```bash
+pomodoro init --global
+```
+*Stores credentials securely in your home directory at `~/.config/notion-pomodoro/.env`.*
+
+#### 🔑 How to Get Your Notion Credentials:
+1. Go to [Notion Integrations](https://www.notion.so/profile/integrations) and click **"+ New integration"**.
+2. Copy the **Internal Integration Secret** (`secret_...` or `ntn_...`).
+3. In Notion, open your database page, click the `...` menu (top right) ➔ **Connections** ➔ add your integration.
+4. Copy your **Database ID** (the 32-character string in the database URL before `?v=`).
 ---
 
 ## 💻 CLI Usage

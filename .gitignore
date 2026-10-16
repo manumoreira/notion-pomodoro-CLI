@@ -36,11 +36,24 @@ env/
 env.bak/
 venv.bak/
 
-# Environment Variables
+# Environment Variables & Secrets
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
+*.env
+.notion_pomodoro.env
+credentials.json
+client_secrets.json
+secrets.json
+*.key
+*.pem
+*.cert
+*.crt
+*.pfx
+*.p12
+*.token
+token.json
+auth.json
 
 # IDE / Editor files
 .vscode/
